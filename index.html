@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MARSOCIAL</title>
+  
+  <!-- Incluir Firebase SDK en modo compat para usar la API clásica -->
+  <script type="module">
+    // Importa las versiones "compat" de Firebase
+    import "https://www.gstatic.com/firebasejs/11.3.0/firebase-app-compat.js";
+    import "https://www.gstatic.com/firebasejs/11.3.0/firebase-auth-compat.js";
+    import "https://www.gstatic.com/firebasejs/11.3.0/firebase-firestore-compat.js";
+    import "https://www.gstatic.com/firebasejs/11.3.0/firebase-analytics-compat.js";
+
+    // Configuración de Firebase (reemplaza estos valores con los de tu proyecto)
+    const firebaseConfig = {
+      apiKey: "AIzaSyCXHylX9ffNkR_n9q5-ZTNiU51_lgS5v2I",
+      authDomain: "marsocial-39b7f.firebaseapp.com",
+      projectId: "marsocial-39b7f",
+      storageBucket: "marsocial-39b7f.appspot.com",  // Verifica este valor
+      messagingSenderId: "1005636085135",
+      appId: "1:1005636085135:web:c4d62300d9c504b0fbd7fa",
+      measurementId: "G-96SB3QGRBW"
+    };
+
+    // Inicializa Firebase
+    firebase.initializeApp(firebaseConfig);
+    const analytics = firebase.analytics();
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // Hacer estos servicios globales para que puedan ser usados en el resto del código
+    window.firebaseAuth = auth;
+    window.firebaseDB = db;
+
+    console.log("firebaseAuth:", window.firebaseAuth);
+    console.log("firebaseDB:", window.firebaseDB);
+  </script>
+  
+  <style>
+    /* --- Estilos (puedes usar tus estilos actuales) --- */
+    body { font-family: Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; transition: background 0.3s, color 0.3s; }
+    body.dark { background: #121212; color: #ffffff; }
+    body.dark .post, body.dark .create-post, body.dark #profileStats,
+    body.dark .friends-list, body.dark .friend-requests, body.dark .messages-list, body.dark .notifications-list {
+      background: #2a2a2a; color: #ffffff; border-color: #444;
+    }
+    body.dark .modal-content { background: #2a2a2a; color: #ffffff; border-color: #444; }
+    header { background: #1877f2; color: white; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; width: 100%; z-index: 1000; }
+    header h1 { margin: 0; }
+    nav ul { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; }
+    nav ul li { margin: 0 10px; }
+    nav ul li a { color: white; text-decoration: none; cursor: pointer; }
+    .container { max-width: 1200px; margin: 80px auto 20px auto; display: flex; }
+    .sidebar { width: 25%; padding: 10px; }
+    .main-content { width: 75%; padding: 10px; }
+    .section { display: none; }
+    .active { display: block; }
+    /* (El resto de tus estilos, por ejemplo para publicaciones, modales, etc.) */
+  </style>
+</head>
+<body>
+  <!-- Encabezado -->
+  <header>
+    <h1>MARSOCIAL</h1>
+    <nav>
+      <ul id="navList">
+        <li><a onclick="navigate('home')">Inicio</a></li>
+        <li><a onclick="navigate('profile')">Perfil</a></li>
+        <li><a onclick="navigate('friends')">Amigos</a></li>
+        <li><a onclick="navigate('messages')">Mensajes</a></li>
+        <li><a onclick="navigate('notifications')">Notificaciones</a></li>
+      </ul>
+    </nav>
+    <div id="headerRight">
+      <div id="userActions">
+        <button onclick="openModal('loginModal')">Login</button>
+        <button onclick="openModal('registerModal')">Registro</button>
+      </div>
+      <div id="profileIcon">
+        <img id="profileIconImg" src="https://cdn-icons-png.flaticon.com/512/6326/6326055.png" alt="Icono de perfil">
+      </div>
+    </div>
+    <div id="profileDropdown">
+      <ul>
+        <li><a href="#" onclick="showProfileStatistics()">Estadísticas</a></li>
+        <li><a href="#" onclick="showConfiguration()">Configuración</a></li>
+        <li><a href="#" onclick="logout()">Cerrar sesión</a></li>
+      </ul>
+    </div>
+  </header>
+  
+  <!-- Contenedor principal -->
+  <div class="container">
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar" style="display:none;">
+      <div id="profileSummary" style="display:none;">
+        <img src="https://cdn-icons-png.flaticon.com/512/6326/6326055.png" id="profilePic" alt="Foto de perfil">
+        <h3 id="profileName"></h3>
+        <p id="profileBio"></p>
+        <p id="profileFollowers"></p>
+      </div>
+      <div id="friendSuggestions">
+        <h3>Amigos recomendados</h3>
+        <small id="noFriendsText"></small>
+        <ul id="suggestionsList"></ul>
+      </div>
+    </div>
+    
+    <!-- Área principal -->
+    <div class="main-content">
+      <!-- Sección Inicio -->
+      <div id="home" class="section active">
+        <div class="create-post" id="createPostSection" style="display:none;">
+          <h3>Crear Publicación</h3>
+          <form id="postForm">
+            <input type="text" id="postTitle" placeholder="Título (1-50 caracteres)" required>
+            <textarea id="postDescription" rows="3" placeholder="Descripción (1-500 caracteres)" required></textarea>
+            <select id="postMediaType">
+              <option value="">Tipo de medio (opcional)</option>
+              <option value="imagen">Imagen</option>
+              <option value="video">Video</option>
+            </select>
+            <label>Subir archivo (opcional):</label>
+            <input type="file" id="postFile">
+            <input type="text" id="postMediaURL" placeholder="URL del medio (opcional)">
+            <button type="button" id="publishButton" style="background: black;" disabled onclick="publishPost()">Publicar</button>
+            <div id="loadingIndicator" style="display:none;"></div>
+          </form>
+        </div>
+        <div id="feedOrderControls">
+          <button class="order-btn" data-order="todo" onclick="setFeedOrder('todo')">Todo</button>
+          <button class="order-btn" data-order="siguiendo" onclick="setFeedOrder('siguiendo')">Siguiendo</button>
+          <button class="order-btn" data-order="amigos" onclick="setFeedOrder('amigos')">Publicaciones de amigos</button>
+          <button class="order-btn" data-order="mias" onclick="setFeedOrder('mias')">Mis publicaciones</button>
+        </div>
+        <div id="feed"></div>
+      </div>
+      
+      <!-- Sección Perfil -->
+      <div id="profile" class="section">
+        <h2>Mi Perfil</h2>
+        <div id="profileStats"></div>
+        <h3>Editar Perfil</h3>
+        <form onsubmit="updateProfile(event)">
+          <input type="text" id="editName" placeholder="Nombre" maxlength="50">
+          <textarea id="editBio" placeholder="Biografía" maxlength="150"></textarea>
+          <label>Actualizar imagen de perfil:</label>
+          <input type="file" id="profileImageInput" accept="image/*">
+          <button type="submit">Actualizar</button>
+        </form>
+        <h3>Tus Publicaciones</h3>
+        <div id="myPosts"></div>
+      </div>
+      
+      <!-- Sección Amigos -->
+      <div id="friends" class="section">
+        <h2>Mis Amigos</h2>
+        <ul id="friendsList" class="friends-list"></ul>
+        <div id="sendFriendRequestSection">
+          <h3>Enviar solicitud de amistad</h3>
+          <input type="text" id="friendRequestUsername" placeholder="Correo o nombre">
+          <button onclick="sendFriendRequest()">Enviar solicitud</button>
+        </div>
+      </div>
+      
+      <!-- Sección Mensajes -->
+      <div id="messages" class="section">
+        <h2>Mensajes</h2>
+        <ul id="messagesList" class="messages-list"></ul>
+        <h3>Nuevo Mensaje</h3>
+        <form onsubmit="sendMessage(event)">
+          <input type="text" id="msgRecipient" placeholder="Usuario destinatario">
+          <textarea id="msgContent" placeholder="Tu mensaje"></textarea>
+          <button type="submit">Enviar</button>
+        </form>
+      </div>
+      
+      <!-- Sección Notificaciones -->
+      <div id="notifications" class="section">
+        <h2>Notificaciones</h2>
+        <ul id="notificationsList" class="notifications-list"></ul>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Modal Login -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal('loginModal')">&times;</span>
+      <h3>Iniciar Sesión</h3>
+      <form onsubmit="login(event)">
+        <input type="text" id="loginUsername" placeholder="Correo" required>
+        <input type="password" id="loginPassword" placeholder="Contraseña" required>
+        <button type="submit">Entrar</button>
+      </form>
+    </div>
+  </div>
+  
+  <!-- Modal Registro -->
+  <div id="registerModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal('registerModal')">&times;</span>
+      <h3>Registro</h3>
+      <form onsubmit="register(event)">
+        <input type="text" id="regUsername" placeholder="Correo" required>
+        <input type="password" id="regPassword" placeholder="Contraseña" required>
+        <input type="text" id="regName" placeholder="Nombre completo" required maxlength="50">
+        <textarea id="regBio" placeholder="Biografía" maxlength="150"></textarea>
+        <button type="submit">Registrarse</button>
+      </form>
+    </div>
+  </div>
+  
+  <!-- Modal Estadísticas -->
+  <div id="statsModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeStatsModal()">&times;</span>
+      <div id="statsContent"></div>
+      <button onclick="closeStatsModal()">Volver</button>
+    </div>
+  </div>
+  
+  <!-- Modal Configuración -->
+  <div id="configModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeConfigModal()">&times;</span>
+      <h3>Configuración</h3>
+      <button onclick="showThemeOptions()">Tema</button>
+      <button onclick="confirmDeleteAccount()">Borrar cuenta</button>
+      <button onclick="closeConfigModal()">Volver</button>
+    </div>
+  </div>
+  
+  <!-- Modal Tema -->
+  <div id="themeModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeThemeModal()">&times;</span>
+      <h3>Selecciona Tema</h3>
+      <button onclick="setTheme('light', true)">Claro</button>
+      <button onclick="setTheme('dark', true)">Oscuro</button>
+      <button onclick="setTheme('system', true)">Sistema</button>
+      <button onclick="closeThemeModal()">Volver</button>
+    </div>
+  </div>
+  
+  <!-- SCRIPT PRINCIPAL: Lógica de la Red Social -->
+  <script type="module">
+    // Accedemos a los servicios globales definidos anteriormente
+    const auth = window.firebaseAuth;
+    const db = window.firebaseDB;
+    
+    /***************************************
+     * VARIABLES GLOBALES
+     ***************************************/
+    let currentUser = null;
+    let feedOrder = "todo";
+    
+    /***************************************
+     * MODALES Y NAVEGACIÓN
+     ***************************************/
+    function openModal(id) { document.getElementById(id).style.display = "block"; }
+    function closeModal(id) { document.getElementById(id).style.display = "none"; }
+    
+    function navigate(section) {
+      if (!currentUser && section !== "home" && section !== "notifications") {
+        alert("Debes iniciar sesión para acceder a esta sección");
+        return;
+      }
+      document.querySelectorAll(".section").forEach(sec => sec.classList.remove("active"));
+      document.getElementById(section).classList.add("active");
+      if (section === "home") loadFeed();
+      if (section === "friends") loadFriends();
+      if (section === "messages") loadMessages();
+      if (section === "notifications") loadNotifications();
+      if (section === "profile") { loadMyPosts(); updateProfileStats(); }
+    }
+    
+    /***************************************
+     * AUTENTICACIÓN: Registro, Login, Logout
+     ***************************************/
+    async function register(event) {
+      event.preventDefault();
+      const email = document.getElementById("regUsername").value;
+      const password = document.getElementById("regPassword").value;
+      const name = document.getElementById("regName").value;
+      const bio = document.getElementById("regBio").value;
+      try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        await db.collection("users").doc(user.uid).set({
+          email: email,
+          name: name,
+          bio: bio,
+          profilePic: "",
+          friends: [],
+          friendRequests: [],
+          following: [],
+          followers: [],
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        alert("Registro exitoso. Ahora inicia sesión.");
+        closeModal("registerModal");
+      } catch (error) {
+        alert("Error en el registro: " + error.message);
+      }
+    }
+    
+    async function login(event) {
+      event.preventDefault();
+      const email = document.getElementById("loginUsername").value;
+      const password = document.getElementById("loginPassword").value;
+      try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        const userDoc = await db.collection("users").doc(user.uid).get();
+        currentUser = { uid: user.uid, ...userDoc.data() };
+        document.getElementById("userActions").innerHTML = `<span>Bienvenido, ${currentUser.name}</span> <button onclick="logout()">Logout</button>`;
+        updateProfileSummary();
+        loadFeed();
+        loadFriends();
+        loadMessages();
+        loadNotifications();
+        updateProfileStats();
+        loadMyPosts();
+        document.getElementById("createPostSection").style.display = "block";
+        document.getElementById("sidebar").style.display = "block";
+        document.getElementById("profileIconImg").src = currentUser.profilePic || "https://cdn-icons-png.flaticon.com/512/6326/6326055.png";
+        closeModal("loginModal");
+      } catch (error) {
+        alert("Error al iniciar sesión: " + error.message);
+      }
+    }
+    
+    function logout() {
+      auth.signOut().then(() => { window.location.reload(); });
+    }
+    
+    /***************************************
+     * ACTUALIZACIÓN DEL PERFIL
+     ***************************************/
+    async function updateProfile(event) {
+      event.preventDefault();
+      if (!currentUser) return;
+      const newName = document.getElementById("editName").value.trim();
+      const newBio = document.getElementById("editBio").value.trim();
+      try {
+        await db.collection("users").doc(currentUser.uid).update({
+          name: newName,
+          bio: newBio
+        });
+        const updatedDoc = await db.collection("users").doc(currentUser.uid).get();
+        currentUser = { uid: currentUser.uid, ...updatedDoc.data() };
+        updateProfileSummary();
+        updateProfileStats();
+        alert("Perfil actualizado.");
+      } catch (error) {
+        alert("Error al actualizar perfil: " + error.message);
+      }
+    }
+    
+    document.getElementById("profileImageInput").addEventListener("change", async function(event) {
+      if (!currentUser) {
+        alert("Debes iniciar sesión para actualizar tu imagen de perfil.");
+        return;
+      }
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+          const dataURL = e.target.result;
+          try {
+            await db.collection("users").doc(currentUser.uid).update({
+              profilePic: dataURL
+            });
+            currentUser.profilePic = dataURL;
+            updateProfileSummary();
+            document.getElementById("profileIconImg").src = dataURL;
+          } catch (error) {
+            alert("Error al actualizar la imagen de perfil: " + error.message);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+    
+    function updateProfileSummary() {
+      if (currentUser) {
+        document.getElementById("profileSummary").style.display = "block";
+        document.getElementById("profilePic").src = currentUser.profilePic || "https://cdn-icons-png.flaticon.com/512/6326/6326055.png";
+        document.getElementById("profileName").innerHTML = getUserDisplayName(currentUser);
+        document.getElementById("profileBio").innerText = currentUser.bio;
+        document.getElementById("profileFollowers").innerText = "Seguidores: " + (currentUser.followers ? currentUser.followers.length : 0);
+      }
+    }
+    
+    function getUserDisplayName(user) {
+      if (!user) return "Usuario";
+      return user.name;
+    }
+    
+    /***************************************
+     * PUBLICACIONES: Crear, Cargar, Likes, Comentarios, Eliminar
+     ***************************************/
+    async function publishPost() {
+      if (!currentUser) {
+        alert("Debes iniciar sesión para publicar");
+        return;
+      }
+      const title = document.getElementById("postTitle").value.trim();
+      const description = document.getElementById("postDescription").value.trim();
+      const mediaType = document.getElementById("postMediaType").value;
+      const mediaURL = document.getElementById("postMediaURL").value.trim();
+      try {
+        await db.collection("posts").add({
+          userId: currentUser.uid,
+          title: title,
+          description: description,
+          mediaType: mediaType,
+          mediaFile: "",
+          mediaURL: mediaURL,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          likes: [],
+          comments: []
+        });
+        document.getElementById("postForm").reset();
+        loadFeed();
+      } catch (error) {
+        alert("Error al publicar: " + error.message);
+      }
+    }
+    
+    async function loadFeed() {
+      try {
+        const snapshot = await db.collection("posts").orderBy("timestamp", "desc").get();
+        const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (posts.length === 0) {
+          document.getElementById("feed").innerHTML = "<p>No hay publicaciones.</p>";
+        } else {
+          document.getElementById("feed").innerHTML = posts.map(post => renderPost(post)).join("");
+        }
+      } catch (error) {
+        alert("Error al cargar publicaciones: " + error.message);
+      }
+    }
+    
+    function renderPost(post) {
+      let defaultPic = "https://cdn-icons-png.flaticon.com/512/6326/6326055.png";
+      let userPic = defaultPic;
+      let userName = "Usuario";
+      if (currentUser && post.userId === currentUser.uid) {
+        userPic = currentUser.profilePic || defaultPic;
+        userName = getUserDisplayName(currentUser);
+      }
+      let mediaHTML = "";
+      if (post.mediaType === "imagen") {
+        if (post.mediaFile) {
+          mediaHTML = `<img src="${post.mediaFile}" alt="Imagen" style="max-width:100%;">`;
+        } else if (post.mediaURL) {
+          mediaHTML = `<img src="${post.mediaURL}" alt="Imagen" style="max-width:100%;">`;
+        }
+      } else if (post.mediaType === "video") {
+        if (post.mediaFile) {
+          mediaHTML = `<video controls style="max-width:100%;"><source src="${post.mediaFile}" type="video/mp4">Tu navegador no soporta video.</video>`;
+        } else if (post.mediaURL) {
+          mediaHTML = `<video controls style="max-width:100%;"><source src="${post.mediaURL}" type="video/mp4">Tu navegador no soporta video.</video>`;
+        }
+      }
+      return `
+        <div class="post">
+          <div class="post-header">
+            <img src="${userPic}" alt="Foto de perfil">
+            <strong>${userName}</strong>
+          </div>
+          <h4>${post.title}</h4>
+          <p>${post.description || ""}</p>
+          ${mediaHTML}
+          <div>
+            <button class="btn btn-primary" onclick="likePost('${post.id}')">
+              Me Gusta (${post.likes ? post.likes.length : 0})
+            </button>
+            <button class="btn btn-secondary" onclick="toggleCommentForm('${post.id}')">
+              Comentar
+            </button>
+            ${ currentUser && post.userId === currentUser.uid ? `<button class="btn btn-danger" onclick="deletePost('${post.id}')">Eliminar</button>` : "" }
+          </div>
+          <div id="comments-${post.id}" style="display:none;">
+            ${ post.comments ? post.comments.map(c => `<p><strong>${c.userName}:</strong> ${c.text}</p>`).join("") : "" }
+          </div>
+          <div id="commentForm-${post.id}" style="display:none;">
+            <input type="text" id="commentInput-${post.id}" placeholder="Escribe un comentario">
+            <button onclick="addComment('${post.id}')">Enviar</button>
+          </div>
+        </div>
+      `;
+    }
+    
+    function toggleCommentForm(postId) {
+      if (!currentUser) {
+        alert("Debes iniciar sesión para comentar.");
+        return;
+      }
+      const commentsDiv = document.getElementById(`comments-${postId}`);
+      const formDiv = document.getElementById(`commentForm-${postId}`);
+      if (commentsDiv.style.display === "none" || commentsDiv.style.display === "") {
+        commentsDiv.style.display = "block";
+        formDiv.style.display = "block";
+      } else {
+        commentsDiv.style.display = "none";
+        formDiv.style.display = "none";
+      }
+    }
+    
+    async function likePost(postId) {
+      if (!currentUser) {
+        alert("Debes iniciar sesión para dar like.");
+        return;
+      }
+      try {
+        const postRef = db.collection("posts").doc(postId);
+        await db.runTransaction(async (transaction) => {
+          const postDoc = await transaction.get(postRef);
+          if (!postDoc.exists) throw "El post no existe.";
+          let likes = postDoc.data().likes || [];
+          if (!likes.includes(currentUser.uid)) {
+            likes.push(currentUser.uid);
+          } else {
+            likes = likes.filter(id => id !== currentUser.uid);
+          }
+          transaction.update(postRef, { likes: likes });
+        });
+        loadFeed();
+      } catch (error) {
+        alert("Error al dar like: " + error);
+      }
+    }
+    
+    async function addComment(postId) {
+      if (!currentUser) {
+        alert("Debes iniciar sesión para comentar.");
+        return;
+      }
+      const input = document.getElementById(`commentInput-${postId}`);
+      const text = input.value;
+      if (text.trim() === "") return;
+      try {
+        const postRef = db.collection("posts").doc(postId);
+        await postRef.update({
+          comments: firebase.firestore.FieldValue.arrayUnion({
+            userId: currentUser.uid,
+            userName: currentUser.name,
+            text: text,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+          })
+        });
+        loadFeed();
+      } catch (error) {
+        alert("Error al agregar comentario: " + error.message);
+      }
+    }
+    
+    async function deletePost(postId) {
+      if (!currentUser) return;
+      if (confirm("¿Estás seguro de eliminar esta publicación?")) {
+        try {
+          const postRef = db.collection("posts").doc(postId);
+          const postDoc = await postRef.get();
+          if (!postDoc.exists) {
+            alert("Publicación no encontrada.");
+            return;
+          }
+          const postData = postDoc.data();
+          if (postData.userId !== currentUser.uid && currentUser.email !== "admin@marsocial.com") {
+            alert("No puedes eliminar esta publicación.");
+            return;
+          }
+          await postRef.delete();
+          loadFeed();
+        } catch (error) {
+          alert("Error al eliminar publicación: " + error.message);
+        }
+      }
+    }
+    
+    /***************************************
+     * MENSAJERÍA
+     ***************************************/
+    async function sendMessage(event) {
+      event.preventDefault();
+      if (!currentUser) {
+        alert("Debes iniciar sesión para enviar mensajes.");
+        return;
+      }
+      const recipientIdentifier = document.getElementById("msgRecipient").value.trim();
+      const content = document.getElementById("msgContent").value.trim();
+      if (recipientIdentifier === "" || content === "") return;
+      try {
+        let recipient = null;
+        let emailSnap = await db.collection("users").where("email", "==", recipientIdentifier).get();
+        if (!emailSnap.empty) {
+          recipient = { uid: emailSnap.docs[0].id, ...emailSnap.docs[0].data() };
+        } else {
+          let nameSnap = await db.collection("users").where("name", "==", recipientIdentifier).get();
+          if (!nameSnap.empty) {
+            recipient = { uid: nameSnap.docs[0].id, ...nameSnap.docs[0].data() };
+          }
+        }
+        if (!recipient) {
+          alert("Usuario destinatario no encontrado.");
+          return;
+        }
+        await db.collection("messages").add({
+          from: currentUser.uid,
+          to: recipient.uid,
+          content: content,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        await db.collection("notifications").add({
+          userId: recipient.uid,
+          text: `Tienes un nuevo mensaje de ${currentUser.name}`,
+          type: "message",
+          from: currentUser.uid,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        alert("Mensaje enviado.");
+        document.getElementById("msgRecipient").value = "";
+        document.getElementById("msgContent").value = "";
+        loadMessages();
+        loadNotifications();
+      } catch (error) {
+        alert("Error al enviar mensaje: " + error.message);
+      }
+    }
+    
+    async function loadMessages() {
+      if (!currentUser) return;
+      try {
+        const snapshot = await db.collection("messages")
+          .where("to", "==", currentUser.uid)
+          .orderBy("timestamp", "desc")
+          .get();
+        let messagesHTML = "";
+        snapshot.forEach(doc => {
+          const msg = doc.data();
+          messagesHTML += `<li><strong>De:</strong> ${msg.from} - ${msg.content} <button onclick="deleteMessage('${doc.id}')">Eliminar</button></li>`;
+        });
+        document.getElementById("messagesList").innerHTML = messagesHTML;
+      } catch (error) {
+        alert("Error al cargar mensajes: " + error.message);
+      }
+    }
+    
+    async function deleteMessage(messageId) {
+      if (!currentUser) return;
+      try {
+        await db.collection("messages").doc(messageId).delete();
+        loadMessages();
+      } catch (error) {
+        alert("Error al eliminar mensaje: " + error.message);
+      }
+    }
+    
+    /***************************************
+     * NOTIFICACIONES
+     ***************************************/
+    async function loadNotifications() {
+      if (!currentUser) return;
+      try {
+        const snapshot = await db.collection("notifications")
+          .where("userId", "==", currentUser.uid)
+          .orderBy("timestamp", "desc")
+          .get();
+        let notificationsHTML = "";
+        snapshot.forEach(doc => {
+          const notif = doc.data();
+          notificationsHTML += `<li>${notif.text} (${new Date(notif.timestamp.seconds * 1000).toLocaleString()}) <button onclick="deleteNotification('${doc.id}')">Eliminar</button></li>`;
+        });
+        document.getElementById("notificationsList").innerHTML = notificationsHTML;
+      } catch (error) {
+        alert("Error al cargar notificaciones: " + error.message);
+      }
+    }
+    
+    async function deleteNotification(notifId) {
+      if (!currentUser) return;
+      try {
+        await db.collection("notifications").doc(notifId).delete();
+        loadNotifications();
+      } catch (error) {
+        alert("Error al eliminar notificación: " + error.message);
+      }
+    }
+    
+    /***************************************
+     * ESTADÍSTICAS DEL PERFIL
+     ***************************************/
+    async function updateProfileStats() {
+      if (!currentUser) return;
+      try {
+        const postsSnap = await db.collection("posts")
+          .where("userId", "==", currentUser.uid)
+          .get();
+        let totalPosts = postsSnap.size;
+        let totalLikes = 0;
+        let totalComments = 0;
+        postsSnap.forEach(doc => {
+          const data = doc.data();
+          totalLikes += data.likes ? data.likes.length : 0;
+          totalComments += data.comments ? data.comments.length : 0;
+        });
+        const statsHTML = `
+          <h3>Estadísticas</h3>
+          <p>Total de publicaciones: ${totalPosts}</p>
+          <p>Total de likes: ${totalLikes}</p>
+          <p>Total de comentarios: ${totalComments}</p>
+          <p>Total de amigos: ${currentUser.friends ? currentUser.friends.length : 0}</p>
+          <p>Total de seguidores: ${currentUser.followers ? currentUser.followers.length : 0}</p>
+        `;
+        document.getElementById("profileStats").innerHTML = statsHTML;
+      } catch (error) {
+        alert("Error al actualizar estadísticas: " + error.message);
+      }
+    }
+    
+    async function loadMyPosts() {
+      if (!currentUser) return;
+      try {
+        const snapshot = await db.collection("posts")
+          .where("userId", "==", currentUser.uid)
+          .orderBy("timestamp", "desc")
+          .get();
+        const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (posts.length === 0) {
+          document.getElementById("myPosts").innerHTML = "<p>No tienes publicaciones.</p>";
+        } else {
+          document.getElementById("myPosts").innerHTML = posts.map(post => renderPost(post)).join("");
+        }
+      } catch (error) {
+        alert("Error al cargar tus publicaciones: " + error.message);
+      }
+    }
+    
+    /***************************************
+     * INICIALIZACIÓN DE LA APLICACIÓN
+     ***************************************/
+    function initApp() {
+      auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          const userDoc = await db.collection("users").doc(user.uid).get();
+          currentUser = { uid: user.uid, ...userDoc.data() };
+          document.getElementById("userActions").innerHTML = `<span>Bienvenido, ${currentUser.name}</span> <button onclick="logout()">Logout</button>`;
+          updateProfileSummary();
+          loadFeed();
+          loadFriends();
+          loadMessages();
+          loadNotifications();
+          updateProfileStats();
+          loadMyPosts();
+          document.getElementById("createPostSection").style.display = "block";
+          document.getElementById("sidebar").style.display = "block";
+          document.getElementById("profileIconImg").src = currentUser.profilePic || "https://cdn-icons-png.flaticon.com/512/6326/6326055.png";
+        } else {
+          currentUser = null;
+          loadFeed();
+        }
+      });
+    }
+    
+    window.onload = initApp;
+    
+    /***************************************
+     * EXPORTAR FUNCIONES AL ÁMBITO GLOBAL
+     * (Esto permite que los atributos inline en el HTML puedan acceder a ellas)
+     ***************************************/
+    window.addEventListener("DOMContentLoaded", () => {
+      window.navigate = navigate;
+      window.openModal = openModal;
+      window.closeModal = closeModal;
+      window.register = register;
+      window.login = login;
+      window.logout = logout;
+      window.updateProfile = updateProfile;
+      window.publishPost = publishPost;
+      window.setFeedOrder = function(order) { feedOrder = order; loadFeed(); };
+      window.likePost = likePost;
+      window.toggleCommentForm = toggleCommentForm;
+      window.addComment = addComment;
+      window.deletePost = deletePost;
+      window.sendFriendRequest = sendFriendRequest;
+      window.loadFriends = loadFriends;
+      window.deleteFriend = deleteFriend;
+      window.toggleFollow = toggleFollow;
+      window.sendMessage = sendMessage;
+      window.loadMessages = loadMessages;
+      window.deleteMessage = deleteMessage;
+      window.loadNotifications = loadNotifications;
+      window.deleteNotification = deleteNotification;
+      window.updateProfileStats = updateProfileStats;
+      window.loadMyPosts = loadMyPosts;
+      // Funciones de modales de configuración y tema (placeholders)
+      window.showProfileStatistics = function() { alert("Función de estadísticas"); };
+      window.showConfiguration = function() { alert("Función de configuración"); };
+      window.closeStatsModal = function() { closeModal("statsModal"); };
+      window.closeConfigModal = function() { closeModal("configModal"); };
+      window.showThemeOptions = function() { alert("Función de tema"); };
+      window.closeThemeModal = function() { closeModal("themeModal"); };
+      window.setTheme = function(theme, notify) {
+        if (theme === "dark") {
+          document.body.classList.add("dark");
+          document.body.classList.remove("light");
+        } else if (theme === "light") {
+          document.body.classList.add("light");
+          document.body.classList.remove("dark");
+        } else if (theme === "system") {
+          if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+            document.body.classList.add("dark");
+            document.body.classList.remove("light");
+          } else {
+            document.body.classList.add("light");
+            document.body.classList.remove("dark");
+          }
+        }
+        if (notify) alert("Tema actualizado a " + theme);
+      };
+      window.confirmDeleteAccount = function() { alert("Función para borrar cuenta"); };
+
+      // Para depuración: Asegurarse de que loadFriends esté definida
+      console.log("loadFriends:", typeof window.loadFriends);
+    });
+  </script>
+</body>
+</html>
