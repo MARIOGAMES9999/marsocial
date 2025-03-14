@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MARSOCIAL</title>
+
+  <!-- Importar Firebase en modo "compat" con <script src>, NO ES Modules -->
+  <script src="https://www.gstatic.com/firebasejs/11.3.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.0/firebase-analytics-compat.js"></script>
+
+  <style>
+    /* --- Estilos Generales y Layout --- */
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 0;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark { background: #121212; color: #ffffff; }
+    body.dark .post,
+    body.dark .create-post,
+    body.dark #profileStats,
+    body.dark .friends-list,
+    body.dark .friend-requests,
+    body.dark .messages-list,
+    body.dark .notifications-list {
+      background: #2a2a2a; color: #ffffff; border-color: #444;
+    }
+    body.dark .modal-content { background: #2a2a2a; color: #ffffff; border-color: #444; }
+    header {
+      background: #1877f2;
+      color: white;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 1000;
+    }
+    header h1 { margin: 0; }
+    nav ul { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; }
+    nav ul li { margin: 0 10px; }
+    nav ul li a { color: white; text-decoration: none; cursor: pointer; }
+    #navList { display: flex; align-items: center; }
+    #headerRight { display: flex; align-items: center; margin-right: 20px; }
+    #userActions button {
+      margin-right: 10px; padding: 5px 10px; border: none; border-radius: 3px;
+      background: white; color: #1877f2; cursor: pointer;
+    }
+    #profileIcon { cursor: pointer; }
+    #profileIcon img { width: 40px; height: 40px; border-radius: 50%; }
+    #profileDropdown {
+      display: none;
+      position: absolute;
+      right: 60px;
+      top: 60px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-shadow: 0px 2px 5px rgba(0,0,0,0.3);
+    }
+    #profileDropdown ul { list-style: none; padding: 10px; margin: 0; }
+    #profileDropdown ul li { margin-bottom: 5px; }
+    #profileDropdown ul li a { text-decoration: none; color: #1877f2; cursor: pointer; }
+    .container { max-width: 1200px; margin: 80px auto 20px auto; display: flex; }
+    .sidebar { width: 25%; padding: 10px; }
+    .main-content { width: 75%; padding: 10px; }
+    .section { display: none; }
+    .active { display: block; }
+    
+    /* --- Publicaciones y Formularios --- */
+    .create-post {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .create-post input[type="text"],
+    .create-post textarea,
+    .create-post select {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-sizing: border-box;
+    }
+    .create-post input[type="file"] { margin-bottom: 10px; }
+    .create-post button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      color: white;
+    }
+    #loadingIndicator { margin-top: 5px; font-weight: bold; }
+    .post {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .post-header { display: flex; align-items: center; }
+    .post-header img { border-radius: 50%; width: 40px; height: 40px; margin-right: 10px; }
+    .btn { padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px; }
+    .btn-primary { background: #1877f2; color: white; }
+    .btn-secondary { background: #ccc; color: black; }
+    .btn-danger { background: red; color: white; }
+    
+    /* --- Modales --- */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 100;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background: rgba(0,0,0,0.5);
+    }
+    .modal-content {
+      background: white;
+      margin: 10% auto;
+      padding: 20px;
+      border-radius: 5px;
+      width: 300px;
+      position: relative;
+    }
+    .close { position: absolute; top: 10px; right: 15px; font-size: 20px; cursor: pointer; }
+    form { display: flex; flex-direction: column; }
+    form input, form textarea, form select {
+      margin-bottom: 10px;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    form button {
+      background: #1877f2;
+      border: none;
+      padding: 10px;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    
+    /* --- Secciones de Amigos, Mensajes y Notificaciones --- */
+    .friends-list, .friend-requests, .messages-list, .notifications-list {
+      background: white;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .friends-list li, .friend-requests li, .messages-list li, .notifications-list li { margin-bottom: 5px; }
+    
+    /* --- Controles para ordenar el Feed --- */
+    #feedOrderControls { margin-bottom: 10px; display: flex; }
+    .order-btn {
+      flex: 1;
+      text-align: center;
+      white-space: nowrap;
+      padding: 5px 10px;
+      margin-right: 5px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      background: #1877f2;
+      color: white;
+    }
+    .order-btn.active { background: darkblue; }
+    .order-btn:disabled { background: gray; cursor: not-allowed; }
+    
+    /* --- Sidebar: Perfil y Amigos --- */
+    #profileSummary { text-align: center; }
+    #profileSummary img { border-radius: 50%; width: 80px; height: 80px; }
+    #profileFollowers { margin: 5px 0; }
+    #profileStats {
+      background: white;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    #friendSuggestions h3 { margin-bottom: 5px; }
+    #noFriendsText { font-size: 0.8em; color: #666; display: none; }
+  </style>
+</head>
+<body>
+  <!-- Encabezado -->
+  <header>
+    <h1>MARSOCIAL</h1>
+    <nav>
+      <ul id="navList">
+        <li><a onclick="navigate('home')">Inicio</a></li>
+        <li><a onclick="navigate('profile')">Perfil</a></li>
+        <li><a onclick="navigate('friends')">Amigos</a></li>
+        <li><a onclick="navigate('messages')">Mensajes</a></li>
+        <li><a onclick="navigate('notifications')">Notificaciones</a></li>
+      </ul>
+    </nav>
+    <div id="headerRight">
+      <div id="userActions">
+        <button onclick="openModal('loginModal')">Login</button>
+        <button onclick="openModal('registerModal')">Registro</button>
+      </div>
+      <div id="profileIcon">
+        <img id="profileIconImg" src="https://cdn-icons-png.flaticon.com/512/6326/6326055.png" alt="Icono de perfil">
+      </div>
+    </div>
+    <div id="profileDropdown">
+      <ul>
+        <li><a href="#" onclick="showProfileStatistics()">Estadísticas</a></li>
+        <li><a href="#" onclick="showConfiguration()">Configuración</a></li>
+        <li><a href="#" onclick="logout()">Cerrar sesión</a></li>
+      </ul>
+    </div>
+  </header>
+  
+  <!-- Contenedor principal -->
+  <div class="container">
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar" style="display:none;">
+      <div id="profileSummary" style="display:none;">
+        <img src="https://cdn-icons-png.flaticon.com/512/6326/6326055.png" id="profilePic" alt="Foto de perfil">
+        <h3 id="profileName"></h3>
+        <p id="profileBio"></p>
+        <p id="profileFollowers"></p>
+      </div>
+      <div id="friendSuggestions">
+        <h3>Amigos recomendados</h3>
+        <small id="noFriendsText"></small>
+        <ul id="suggestionsList"></ul>
+      </div>
+    </div>
+    
+    <!-- Área principal -->
+    <div class="main-content">
+      <!-- Sección Inicio -->
+      <div id="home" class="section active">
+        <div class="create-post" id="createPostSection" style="display:none;">
+          <h3>Crear Publicación</h3>
+          <form id="postForm">
+            <input type="text" id="postTitle" placeholder="Título (1-50 caracteres)" required>
+            <textarea id="postDescription" rows="3" placeholder="Descripción (1-500 caracteres)" required></textarea>
+            <select id="postMediaType">
+              <option value="">Tipo de medio (opcional)</option>
+              <option value="imagen">Imagen</option>
+              <option value="video">Video</option>
+            </select>
+            <label>Subir archivo (opcional):</label>
+            <input type="file" id="postFile">
+            <input type="text" id="postMediaURL" placeholder="URL del medio (opcional)">
+            <button type="button" id="publishButton" style="background: black;" disabled onclick="publishPost()">Publicar</button>
+            <div id="loadingIndicator" style="display:none;"></div>
+          </form>
+        </div>
+        <div id="feedOrderControls">
+          <button class="order-btn" data-order="todo" onclick="setFeedOrder('todo')">Todo</button>
+          <button class="order-btn" data-order="siguiendo" onclick="setFeedOrder('siguiendo')">Siguiendo</button>
+          <button class="order-btn" data-order="amigos" onclick="setFeedOrder('amigos')">Publicaciones de amigos</button>
+          <button class="order-btn" data-order="mias" onclick="setFeedOrder('mias')">Mis publicaciones</button>
+        </div>
+        <div id="feed"></div>
+      </div>
+      
+      <!-- Sección Perfil -->
+      <div id="profile" class="section">
+        <h2>Mi Perfil</h2>
+        <div id="profileStats"></div>
+        <h3>Editar Perfil</h3>
+        <form onsubmit="updateProfile(event)">
+          <input type="text" id="editName" placeholder="Nombre" maxlength="50">
+          <textarea id="editBio" placeholder="Biografía" maxlength="150"></textarea>
+          <label>Actualizar imagen de perfil:</label>
+          <input type="file" id="profileImageInput" accept="image/*">
+          <button type="submit">Actualizar</button>
+        </form>
+        <h3>Tus Publicaciones</h3>
+        <div id="myPosts"></div>
+      </div>
+      
+      <!-- Sección Amigos -->
+      <div id="friends" class="section">
+        <h2>Mis Amigos</h2>
+        <ul id="friendsList" class="friends-list"></ul>
+        <div id="sendFriendRequestSection">
+          <h3>Enviar solicitud de amistad</h3>
+          <input type="text" id="friendRequestUsername" placeholder="Correo o nombre">
+          <button onclick="sendFriendRequest()">Enviar solicitud</button>
+        </div>
+      </div>
+      
+      <!-- Sección Mensajes -->
+      <div id="messages" class="section">
+        <h2>Mensajes</h2>
+        <ul id="messagesList" class="messages-list"></ul>
+        <h3>Nuevo Mensaje</h3>
+        <form onsubmit="sendMessage(event)">
+          <input type="text" id="msgRecipient" placeholder="Usuario destinatario">
+          <textarea id="msgContent" placeholder="Tu mensaje"></textarea>
+          <button type="submit">Enviar</button>
+        </form>
+      </div>
+      
+      <!-- Sección Notificaciones -->
+      <div id="notifications" class="section">
+        <h2>Notificaciones</h2>
+        <ul id="notificationsList" class="notifications-list"></ul>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Modal Login -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal('loginModal')">&times;</span>
+      <h3>Iniciar Sesión</h3>
+      <form onsubmit="login(event)">
+        <input type="text" id="loginUsername" placeholder="Correo" required>
+        <input type="password" id="loginPassword" placeholder="Contraseña" required>
+        <button type="submit">Entrar</button>
+      </form>
+    </div>
+  </div>
+  
+  <!-- Modal Registro -->
+  <div id="registerModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal('registerModal')">&times;</span>
+      <h3>Registro</h3>
+      <form onsubmit="register(event)">
+        <input type="text" id="regUsername" placeholder="Correo" required>
+        <input type="password" id="regPassword" placeholder="Contraseña" required>
+        <input type="text" id="regName" placeholder="Nombre completo" required maxlength="50">
+        <textarea id="regBio" placeholder="Biografía" maxlength="150"></textarea>
+        <button type="submit">Registrarse</button>
+      </form>
+    </div>
+  </div>
+  
+  <!-- Modal Estadísticas -->
+  <div id="statsModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeStatsModal()">&times;</span>
+      <div id="statsContent"></div>
+      <button onclick="closeStatsModal()">Volver</button>
+    </div>
+  </div>
+  
+  <!-- Modal Configuración -->
+  <div id="configModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeConfigModal()">&times;</span>
+      <h3>Configuración</h3>
+      <button onclick="showThemeOptions()">Tema</button>
+      <button onclick="confirmDeleteAccount()">Borrar cuenta</button>
+      <button onclick="closeConfigModal()">Volver</button>
+    </div>
+  </div>
+  
+  <!-- Modal Tema -->
+  <div id="themeModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeThemeModal()">&times;</span>
+      <h3>Selecciona Tema</h3>
+      <button onclick="setTheme('light', true)">Claro</button>
+      <button onclick="setTheme('dark', true)">Oscuro</button>
+      <button onclick="setTheme('system', true)">Sistema</button>
+      <button onclick="closeThemeModal()">Volver</button>
+    </div>
+  </div>
+  
+  <!-- SCRIPT PRINCIPAL: SIN type="module" -->
+  <script>
+    // 1. Configuración de Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyC...",
+      authDomain: "marsocial-39b7f.firebaseapp.com",
+      projectId: "marsocial-39b7f",
+      storageBucket: "marsocial-39b7f.appspot.com",
+      messagingSenderId: "1005636085135",
+      appId: "1:1005636085135:web:c4d62300d9c504b0fbd7fa",
+      measurementId: "G-96SB3QGRBW"
+    };
+    // 2. Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const analytics = firebase.analytics();
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // 3. Variables globales
+    let currentUser = null;
+    let feedOrder = "todo";
+
+    // 4. Dummy function para evitar error “toggleFollow is not defined”
+    function toggleFollow() {
+      alert("Funcionalidad de seguir/dejar de seguir no implementada todavía.");
+    }
+
+    // 5. Resto del código EXACTO de tu MARSOCIAL (publicaciones, mensajes, amigos, etc.)
+    //    Copia aquí todo tu JS tal cual, reemplazando "auth" y "db" donde sea.
+
+    /***************************************
+     * Ejemplo de initApp
+     ***************************************/
+    function initApp() {
+      auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          const userDoc = await db.collection("users").doc(user.uid).get();
+          currentUser = { uid: user.uid, ...userDoc.data() };
+          document.getElementById("userActions").innerHTML = `<span>Bienvenido, ${currentUser.name}</span> <button onclick="logout()">Logout</button>`;
+          // ... resto de la lógica ...
+        } else {
+          currentUser = null;
+          // ... resto de la lógica ...
+        }
+      });
+    }
+    window.onload = initApp;
+
+    // 6. Asignar funciones al objeto window para que los onclick inline funcionen
+    window.toggleFollow = toggleFollow;
+    // Ejemplo:
+    // window.navigate = navigate;
+    // window.login = login;
+    // ...
+    // (Pega aquí todas tus funciones con “window.”)
+  </script>
+</body>
+</html>
